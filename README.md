@@ -17,6 +17,17 @@ Repo: [github.com/AxelShen/relkvm](https://github.com/AxelShen/relkvm)
 
 接真機時只實作 [`src/lib/jetkvm/live-transport.ts`](src/lib/jetkvm/live-transport.ts)。契約在 [`src/lib/jetkvm/contract.ts`](src/lib/jetkvm/contract.ts)。劇本跑 [`src/lib/sim/runner.ts`](src/lib/sim/runner.ts)，不該為了真機改步驟 JSON。
 
+右上角 **模擬 / 真機** 切換。真機對齊 [jetkvm/kvm](https://github.com/jetkvm/kvm) `jsonrpc.go`：
+
+| RelKVM | JetKVM RPC |
+| --- | --- |
+| 電源 | `setATXPowerAction`（power-short / power-long / reset） |
+| 鍵盤 | `keyboardReport` `{ keys, modifier }` |
+| ISO | `mountWithHTTP` / `unmountImage` |
+| 畫面 | WebRTC H.264 + 瀏覽器 Tesseract OCR |
+
+握手：`POST /auth/login-local` → `POST /webrtc/session`，DataChannel 名稱 `rpc`。請在實驗室電腦跑 RelKVM，與 JetKVM 同一區網。
+
 ## 怎麼跑模擬器
 
 1. 選一台 DUT

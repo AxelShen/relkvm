@@ -1,16 +1,17 @@
 /**
  * RelKVM DUT 操控契約。
  *
- * Phase 1（目前）：`sim` — 瀏覽器內 DUT 狀態機，RPC 只寫進 log。
- * Phase 2（下一步）：`live` — 同一組方法打到實體 JetKVM JSON-RPC / WebSocket。
+ * sim  — 瀏覽器 DUT 狀態機
+ * live — 同一組方法打到實體 JetKVM（WebRTC DataChannel "rpc"）
  *
- * 劇本（playbook）只認 tool 名稱，不認 transport。接真機時不要改步驟格式。
+ * 劇本只認 tool 名稱。live 時 RPC 字串用 stock JetKVM jsonrpc.go 的方法名。
  */
 
 export type TransportMode = "sim" | "live";
 
 export type PowerAction = "on" | "off" | "cycle";
 
+/** RelKVM 自己的邏輯名（模擬 log / 舊劇本註解） */
 export const JETKVM_RPC = {
   power: "kvm.atx.setPower",
   hidKey: "kvm.hid.key",
@@ -20,8 +21,20 @@ export const JETKVM_RPC = {
   mount: "kvm.virtualMedia.mount",
 } as const;
 
+/** jetkvm/kvm jsonrpc.go 真實方法 */
+export const JETKVM_LIVE_RPC = {
+  power: "setATXPowerAction",
+  atxState: "getATXState",
+  hidKey: "keypressReport",
+  hidReport: "keyboardReport",
+  mouse: "absMouseReport",
+  mount: "mountWithHTTP",
+  unmount: "unmountImage",
+  ping: "ping",
+  video: "getVideoState",
+} as const;
+
 export interface JetKvmEndpoint {
-  /** DUT 上的 JetKVM，例如 192.168.7.22 */
   host: string;
   deviceId: string;
   fw: string;
@@ -33,7 +46,6 @@ export interface KvmTransport {
   setPower(action: PowerAction): Promise<void>;
   hidKey(key: string): Promise<void>;
   hidText(text: string, submit?: boolean): Promise<void>;
-  /** HDMI OCR 等到畫面含 needle；逾時回 false。 */
   ocrWait(needle: string, timeoutMs: number): Promise<boolean>;
   ocrSnapshot(): Promise<string>;
   mountMedia(image: string, mounted: boolean): Promise<void>;

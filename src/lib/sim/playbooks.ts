@@ -264,23 +264,23 @@ export function blankCustom(from?: Playbook): Playbook {
 export const TOOL_CATALOG = [
   {
     name: "power",
-    rpc: "kvm.atx.setPower",
-    hint: "on | off | cycle — 走 JetKVM ATX 擴充腳。",
+    rpc: "setATXPowerAction",
+    hint: "模擬：狀態機。真機：JetKVM ATX power-short / power-long / reset。",
   },
   {
     name: "key",
-    rpc: "kvm.hid.key",
-    hint: "USB HID 掃描碼。BIOS 用 DEL / 方向鍵 / F12 / F10。",
+    rpc: "keyboardReport",
+    hint: "USB HID。真機走 JetKVM keyboardReport { keys, modifier }。",
   },
   {
     name: "type",
-    rpc: "kvm.hid.text",
+    rpc: "keyboardReport",
     hint: "字串逐字送 HID，submit 再送 Enter。Shell 與 OS 用。",
   },
   {
     name: "wait",
     rpc: "kvm.video.ocrWait",
-    hint: "對 HDMI 畫面做 OCR，等到針出現。",
+    hint: "對 HDMI 做 OCR。真機：截 WebRTC 幀 + Tesseract。",
   },
   {
     name: "assert",
@@ -294,7 +294,7 @@ export const TOOL_CATALOG = [
   },
   {
     name: "mount",
-    rpc: "kvm.virtualMedia.mount",
-    hint: "掛 RELEASE agent ISO 到 DUT USB。",
+    rpc: "mountWithHTTP",
+    hint: "真機：mountWithHTTP / unmountImage。模擬：只改狀態。",
   },
 ] as const;

@@ -21,8 +21,10 @@ import { Button } from "@/components/ui/button";
 import { FlowEditor } from "@/components/lab/flow-editor";
 import { HidKeyboard } from "@/components/lab/hid-keyboard";
 import { KvmScreen } from "@/components/lab/kvm-screen";
+import { LiveHdmi } from "@/components/lab/live-hdmi";
 import { cn } from "@/lib/cn";
 import { composePlaybook } from "@/lib/grok";
+import { getJetKvmSession } from "@/lib/jetkvm/session";
 import { hydrateCustom, hydrateReports, resolveBook, screenOcr, useLab } from "@/lib/lab-store";
 import { DUTS } from "@/lib/sim/fleet";
 import { PLAYBOOKS, TOOL_CATALOG } from "@/lib/sim/playbooks";
@@ -68,6 +70,16 @@ export function LabApp() {
   const newCustom = useLab((s) => s.newCustom);
   const isoMounted = dut.isoMounted;
   const mountIso = useLab((s) => s.mountIso);
+  const mode = useLab((s) => s.mode);
+  const setMode = useLab((s) => s.setMode);
+  const liveHost = useLab((s) => s.liveHost);
+  const setLiveHost = useLab((s) => s.setLiveHost);
+  const livePassword = useLab((s) => s.livePassword);
+  const setLivePassword = useLab((s) => s.setLivePassword);
+  const liveStatus = useLab((s) => s.liveStatus);
+  const liveError = useLab((s) => s.liveError);
+  const connectLive = useLab((s) => s.connectLive);
+  const disconnectLive = useLab((s) => s.disconnectLive);
 
   const book = resolveBook(playbookId, customBooks, draft);
   const bezelRef = useRef<HTMLDivElement>(null);
@@ -78,21 +90,28 @@ export function LabApp() {
   const stepResults = useLab((s) => s.stepResults);
 
   const captureScreen = async (reason = "manual") => {
-    const node = screenRef.current;
-    if (!node || capturing.current) return;
     capturing.current = true;
     try {
-      const dataUrl = await toPng(node, {
-        pixelRatio: 2,
-        cacheBust: true,
-        backgroundColor: "#101418",
-      });
+      let dataUrl = "";
       const s = useLab.getState();
+      if (s.mode === "live") {
+        const canvas = getJetKvmSession().grabCanvas();
+        if (!canvas) return;
+        dataUrl = canvas.toDataURL("image/png");
+      } else {
+        const node = screenRef.current;
+        if (!node) return;
+        dataUrl = await toPng(node, {
+          pixelRatio: 2,
+          cacheBust: true,
+          backgroundColor: "#101418",
+        });
+      }
       const d = s.duts[s.activeId];
       pushCapture({
         t: Date.now(),
         dutName: d.profile.name,
-        phase: `${d.power} · ${reason}`,
+        phase: `${s.mode === "live" ? "live" : d.power} · ${reason}`,
         dataUrl,
         ocr: screenOcr(),
       });
@@ -100,7 +119,7 @@ export function LabApp() {
         s.setRail("shots");
       }
     } catch {
-      /* html-to-image can fail on empty frames */
+      /* capture can fail on empty frames */
     } finally {
       capturing.current = false;
     }
@@ -163,7 +182,8 @@ export function LabApp() {
   }, [stepResults]);
 
   const latency = 34 + (dut.profile.jetkvm.id.charCodeAt(0) % 11);
-  const live = dut.power !== "off";
+  const live = mode === "live" ? liveStatus === "connected" : dut.power !== "off";
+  const connecting = liveStatus === "connecting";
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
@@ -175,8 +195,29 @@ export function LabApp() {
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
           <StatusDot on={live} label={live ? "HDMI" : "無訊號"} />
           <StatusDot on={live} label="HID" />
-          <span className="tabular-nums">{live ? `${latency} ms` : "—"}</span>
+          <span className="tabular-nums">{live ? (mode === "live" ? "live" : `${latency} ms`) : "—"}</span>
           <span className="hidden sm:inline">JetKVM {dut.profile.jetkvm.id}</span>
+        </div>
+        <div className="flex rounded-md border border-border p-1">
+          {(
+            [
+              ["sim", "模擬"],
+              ["live", "真機"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              disabled={running}
+              onClick={() => setMode(id)}
+              className={cn(
+                "h-11 min-w-16 rounded-sm px-3 text-sm",
+                mode === id ? "bg-accent text-accent-fg" : "text-muted hover:text-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
         <div className="flex items-center gap-2">
           {([1, 2, 4] as const).map((n) => (
@@ -194,6 +235,41 @@ export function LabApp() {
           ))}
         </div>
       </header>
+
+      {mode === "live" && (
+        <div className="flex flex-wrap items-end gap-2 border-b border-border px-4 py-3 sm:px-6">
+          <label className="min-w-40 flex-1">
+            <span className="mb-1 block text-xs text-muted">JetKVM IP</span>
+            <input
+              value={liveHost}
+              onChange={(e) => setLiveHost(e.target.value)}
+              placeholder="192.168.7.22"
+              className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent/40"
+            />
+          </label>
+          <label className="min-w-36 flex-1">
+            <span className="mb-1 block text-xs text-muted">密碼（若有）</span>
+            <input
+              type="password"
+              value={livePassword}
+              onChange={(e) => setLivePassword(e.target.value)}
+              autoComplete="off"
+              className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent/40"
+            />
+          </label>
+          {liveStatus === "connected" ? (
+            <Button variant="outline" onClick={() => void disconnectLive()} disabled={running}>
+              斷線
+            </Button>
+          ) : (
+            <Button onClick={() => void connectLive()} disabled={running || connecting}>
+              {connecting ? <LoaderCircle className="size-4 animate-spin" /> : <Cable className="size-4" />}
+              連線
+            </Button>
+          )}
+          {liveError && <p className="w-full text-xs text-fail">{liveError}</p>}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3 sm:px-6">
         {DUTS.map((p) => {
@@ -272,11 +348,11 @@ export function LabApp() {
         <div className="ml-auto flex gap-2">
           <Button
             variant="outline"
-            onClick={() => power(dut.power === "off" ? "on" : "off")}
+            onClick={() => power(mode === "live" ? "on" : dut.power === "off" ? "on" : "off")}
             disabled={running}
           >
             <Power className="size-4" />
-            {dut.power === "off" ? "電源" : "關機"}
+            {mode === "live" ? "ATX 短按" : dut.power === "off" ? "電源" : "關機"}
           </Button>
           {running ? (
             <Button variant="danger" onClick={abort}>
@@ -327,7 +403,7 @@ export function LabApp() {
               </div>
             </div>
             <div ref={screenRef} className="aspect-video">
-              <KvmScreen dut={dut} />
+              {mode === "live" ? <LiveHdmi /> : <KvmScreen dut={dut} />}
             </div>
             {hidBadges.length > 0 && (
               <div className="pointer-events-none absolute bottom-10 left-3 flex flex-wrap gap-1">
@@ -369,7 +445,10 @@ export function LabApp() {
             </button>
           </div>
           <p className="text-xs text-muted">
-            點 HDMI 畫面後可用鍵盤。Agent 透過 JetKVM HID 送鍵，OCR 等畫面，不依賴 OS 內 agent。
+            點 HDMI 畫面後可用鍵盤。
+            {mode === "live"
+              ? " 真機：按鍵走 JetKVM keyboardReport，電源走 setATXPowerAction。"
+              : " Agent 透過模擬 HID 送鍵，OCR 等畫面。"}
           </p>
         </section>
 

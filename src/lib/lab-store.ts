@@ -1,4 +1,8 @@
 import { create } from "zustand";
+import { createLiveTransport } from "./jetkvm/live-transport";
+import { getJetKvmSession, type LiveStatus } from "./jetkvm/session";
+import type { TransportMode } from "./jetkvm/contract";
+import { JETKVM_LIVE_RPC, JETKVM_RPC } from "./jetkvm/contract";
 import { applyHid, bootSelect, createDut, ocrText, powerCycle, powerOff, powerOn, setupSelect, setupTab as applySetupTab, tick } from "./sim/engine";
 import { DUTS } from "./sim/fleet";
 import { PLAYBOOKS, blankCustom } from "./sim/playbooks";
@@ -39,6 +43,11 @@ export interface LabState {
   draft: Playbook | null;
   customBooks: Playbook[];
   focused: boolean;
+  mode: TransportMode;
+  liveHost: string;
+  livePassword: string;
+  liveStatus: LiveStatus;
+  liveError: string | null;
   selectDut: (id: string) => void;
   setSpeed: (s: 1 | 2 | 4) => void;
   setPlaybook: (id: string) => void;
@@ -48,6 +57,11 @@ export interface LabState {
   removeCustom: (id: string) => void;
   newCustom: (from?: Playbook) => Playbook;
   setFocused: (v: boolean) => void;
+  setMode: (m: TransportMode) => void;
+  setLiveHost: (v: string) => void;
+  setLivePassword: (v: string) => void;
+  connectLive: () => Promise<void>;
+  disconnectLive: () => Promise<void>;
   tick: (dt: number) => void;
   hid: (key: HidKey) => void;
   setupPick: (index: number, activate?: boolean) => void;
@@ -87,6 +101,16 @@ export const useLab = create<LabState>()((set, get) => {
         set((s) => ({ hidBadges: s.hidBadges.filter((b) => b.id !== id) }));
       }, 700);
     },
+    mode: () => get().mode,
+    live: () => {
+      if (get().mode !== "live" || !getJetKvmSession().connected) return null;
+      const dut = get().duts[get().activeId];
+      return createLiveTransport({
+        host: get().liveHost || dut.profile.jetkvm.host,
+        deviceId: dut.profile.jetkvm.id,
+        fw: dut.profile.jetkvm.fw,
+      });
+    },
   });
 
   return {
@@ -106,6 +130,11 @@ export const useLab = create<LabState>()((set, get) => {
     draft: null,
     customBooks: [],
     focused: false,
+    mode: "sim",
+    liveHost: DUTS[0].jetkvm.host,
+    livePassword: "",
+    liveStatus: "idle",
+    liveError: null,
     selectDut: (id) => set({ activeId: id }),
     setSpeed: (speed) => set({ speed }),
     setPlaybook: (playbookId) => set({ playbookId, draft: null }),
@@ -138,7 +167,45 @@ export const useLab = create<LabState>()((set, get) => {
       return book;
     },
     setFocused: (focused) => set({ focused }),
+    setMode: (mode) => {
+      if (mode === "sim") {
+        void getJetKvmSession().disconnect();
+        set({ mode, liveStatus: "idle", liveError: null });
+        return;
+      }
+      set({ mode });
+    },
+    setLiveHost: (liveHost) => {
+      set({ liveHost });
+      try {
+        localStorage.setItem("relkvm-live-host", liveHost);
+      } catch {
+        /* ignore */
+      }
+    },
+    setLivePassword: (livePassword) => set({ livePassword }),
+    connectLive: async () => {
+      const host = get().liveHost.trim() || get().duts[get().activeId].profile.jetkvm.host;
+      set({ mode: "live", liveStatus: "connecting", liveError: null, liveHost: host });
+      try {
+        await getJetKvmSession().connect(host, get().livePassword);
+        set({ liveStatus: "connected", liveError: null });
+        get().pushRpc({
+          dir: "note",
+          method: "ping",
+          body: JSON.stringify({ host, via: "webrtc/session" }),
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "連線失敗";
+        set({ liveStatus: "error", liveError: msg });
+      }
+    },
+    disconnectLive: async () => {
+      await getJetKvmSession().disconnect();
+      set({ liveStatus: "idle", liveError: null, mode: "sim" });
+    },
     tick: (dt) => {
+      if (get().mode === "live") return;
       const { activeId, duts, speed } = get();
       const next = tick(duts[activeId], dt * speed);
       if (next !== duts[activeId]) {
@@ -146,12 +213,29 @@ export const useLab = create<LabState>()((set, get) => {
       }
     },
     hid: (key) => {
-      const { activeId, duts, running } = get();
+      const { activeId, duts, running, mode } = get();
       if (running) return;
       host().onHid(String(key));
+      const live = host().live();
+      if (mode === "live") {
+        get().pushRpc({
+          dir: "tx",
+          method: JETKVM_LIVE_RPC.hidReport,
+          body: JSON.stringify({ keys: [key], source: "manual" }),
+        });
+        if (!live) return;
+        void live.hidKey(String(key)).catch((e: unknown) => {
+          get().pushRpc({
+            dir: "note",
+            method: JETKVM_LIVE_RPC.hidReport,
+            body: e instanceof Error ? e.message : "HID 失敗",
+          });
+        });
+        return;
+      }
       get().pushRpc({
         dir: "tx",
-        method: "kvm.hid.key",
+        method: JETKVM_RPC.hidKey,
         body: JSON.stringify({ keys: [key], source: "manual" }),
       });
       set({
@@ -178,19 +262,42 @@ export const useLab = create<LabState>()((set, get) => {
       set({ duts: { ...duts, [activeId]: next } });
     },
     power: (action) => {
-      const { activeId, duts } = get();
+      const { activeId, duts, mode } = get();
+      const live = host().live();
+      const method = mode === "live" ? JETKVM_LIVE_RPC.power : JETKVM_RPC.power;
+      get().pushRpc({
+        dir: "tx",
+        method,
+        body: JSON.stringify({ action }),
+      });
+      if (mode === "live") {
+        if (!live) return;
+        void live.setPower(action).catch((e: unknown) => {
+          get().pushRpc({
+            dir: "note",
+            method,
+            body: e instanceof Error ? e.message : "ATX 失敗",
+          });
+        });
+        return;
+      }
       const cur = duts[activeId];
       const next =
         action === "off" ? powerOff(cur) : action === "on" ? powerOn(cur) : powerCycle(cur);
-      get().pushRpc({
-        dir: "tx",
-        method: "kvm.atx.setPower",
-        body: JSON.stringify({ action }),
-      });
       set({ duts: { ...duts, [activeId]: next } });
     },
     mountIso: (on) => {
-      const { activeId, duts } = get();
+      const { activeId, duts, mode } = get();
+      if (mode === "live") {
+        const live = host().live();
+        get().pushRpc({
+          dir: "tx",
+          method: JETKVM_LIVE_RPC.mount,
+          body: JSON.stringify({ mounted: on }),
+        });
+        if (live) void live.mountMedia("rel-test-agent.iso", on);
+        return;
+      }
       set({
         duts: { ...duts, [activeId]: { ...duts[activeId], isoMounted: on } },
       });
@@ -311,6 +418,12 @@ export function hydrateCustom() {
     if (!raw) return;
     const customBooks = JSON.parse(raw) as Playbook[];
     if (Array.isArray(customBooks)) useLab.setState({ customBooks });
+  } catch {
+    /* ignore */
+  }
+  try {
+    const host = localStorage.getItem("relkvm-live-host");
+    if (host) useLab.setState({ liveHost: host });
   } catch {
     /* ignore */
   }
