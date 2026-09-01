@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0a0c0e;
+  --color-foreground: #e8edf1;
+  --color-surface: #12161a;
+  --color-surface-2: #1a2026;
+  --color-muted: #8b97a3;
+  --color-accent: #c8d0d8;
+  --color-accent-fg: #0a0c0e;
+  --color-border: #2a323a;
+  --color-pass: #7aa38f;
+  --color-fail: #c4897a;
+  --color-warn: #b8a078;
+  --color-kvm-post: #070b08;
+  --color-kvm-post-fg: #c5d4c8;
+  --color-kvm-bios: #00005c;
+  --color-kvm-bios-hi: #00aaaa;
+  --color-kvm-bios-sel: #000000;
+  --color-kvm-bios-fg: #f3f3f3;
+  --color-kvm-gui: #101418;
+  --color-kvm-gui-panel: #171d24;
+  --color-kvm-gui-hi: #24303a;
+  --color-kvm-gui-line: #2c3842;
+  --color-kvm-gui-fg: #e8edf1;
+  --color-kvm-gui-muted: #8b97a3;
+
+  --color-kvm-shell: #050505;
+  --color-kvm-shell-fg: #d6d6d6;
+  --color-kvm-os: #0b0b0b;
+  --color-kvm-os-fg: #d0d0d0;
+  --color-signal: #9aa3ab;
+
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+    background: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.kvm-scan {
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    rgb(0 0 0 / 0.22) 2px,
+    rgb(0 0 0 / 0.22) 3px
+  );
+}
+
+.kvm-cursor {
+  display: inline-block;
+  width: 0.6ch;
+  height: 1em;
+  background: currentColor;
+  transform: translateY(0.12em);
+  animation: kvm-blink 1.05s steps(1) infinite;
+}
+
+@keyframes kvm-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.hid-pop {
+  animation: hid-pop var(--motion-fast, 250ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes hid-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
