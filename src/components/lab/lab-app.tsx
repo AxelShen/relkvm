@@ -9,7 +9,6 @@ import {
   LoaderCircle,
   MonitorPlay,
   Plus,
-  Power,
   Square,
   Terminal,
   Trash2,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import { Button } from "@/components/ui/button";
+import { AtxBar } from "@/components/lab/atx-bar";
 import { FlowEditor } from "@/components/lab/flow-editor";
 import { HidKeyboard } from "@/components/lab/hid-keyboard";
 import { KvmScreen } from "@/components/lab/kvm-screen";
@@ -57,7 +57,6 @@ export function LabApp() {
   const running = useLab((s) => s.running);
   const run = useLab((s) => s.run);
   const abort = useLab((s) => s.abort);
-  const power = useLab((s) => s.power);
   const hid = useLab((s) => s.hid);
   const tick = useLab((s) => s.tick);
   const focused = useLab((s) => s.focused);
@@ -345,15 +344,8 @@ export function LabApp() {
           <Plus className="size-4" />
           新增流程
         </button>
-        <div className="ml-auto flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => power(mode === "live" ? "on" : dut.power === "off" ? "on" : "off")}
-            disabled={running}
-          >
-            <Power className="size-4" />
-            {mode === "live" ? "ATX 短按" : dut.power === "off" ? "電源" : "關機"}
-          </Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <AtxBar />
           {running ? (
             <Button variant="danger" onClick={abort}>
               <Square className="size-4" />
@@ -403,7 +395,11 @@ export function LabApp() {
               </div>
             </div>
             <div ref={screenRef} className="aspect-video">
-              {mode === "live" ? <LiveHdmi /> : <KvmScreen dut={dut} />}
+              {mode === "live" && liveStatus === "connected" ? (
+                <LiveHdmi />
+              ) : (
+                <KvmScreen dut={dut} />
+              )}
             </div>
             {hidBadges.length > 0 && (
               <div className="pointer-events-none absolute bottom-10 left-3 flex flex-wrap gap-1">

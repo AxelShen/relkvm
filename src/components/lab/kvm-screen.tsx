@@ -24,10 +24,23 @@ export function KvmScreen({ dut }: { dut: DutState }) {
 }
 
 function NoSignal() {
+  const power = useLab((s) => s.power);
+  const running = useLab((s) => s.running);
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 bg-surface text-signal">
+    <div className="flex h-full flex-col items-center justify-center gap-4 bg-surface text-signal">
       <div className="text-xl tracking-widest text-muted">NO SIGNAL</div>
-      <p className="text-xs text-muted">HDMI 未鎖定 · 按電源啟動 DUT</p>
+      <p className="text-xs text-muted">HDMI 未鎖定 · DUT 關機</p>
+      <button
+        type="button"
+        disabled={running}
+        onClick={(e) => {
+          e.stopPropagation();
+          power("on");
+        }}
+        className="inline-flex h-12 min-w-40 items-center justify-center rounded-md bg-accent px-5 text-sm font-medium text-accent-fg disabled:opacity-40"
+      >
+        開啟電源
+      </button>
     </div>
   );
 }

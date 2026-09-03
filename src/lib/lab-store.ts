@@ -264,23 +264,34 @@ export const useLab = create<LabState>()((set, get) => {
     power: (action) => {
       const { activeId, duts, mode } = get();
       const live = host().live();
-      const method = mode === "live" ? JETKVM_LIVE_RPC.power : JETKVM_RPC.power;
+      const method = mode === "live" && live ? JETKVM_LIVE_RPC.power : JETKVM_RPC.power;
       get().pushRpc({
         dir: "tx",
         method,
         body: JSON.stringify({ action }),
       });
-      if (mode === "live") {
-        if (!live) return;
-        void live.setPower(action).catch((e: unknown) => {
-          get().pushRpc({
-            dir: "note",
-            method,
-            body: e instanceof Error ? e.message : "ATX 失敗",
+      host().onHid(action === "off" ? "PWR-OFF" : action === "cycle" ? "RST" : "PWR");
+
+      if (mode === "live" && live) {
+        void live
+          .setPower(action)
+          .then(() => {
+            get().pushRpc({ dir: "rx", method, body: '{"ok":true}' });
+          })
+          .catch((e: unknown) => {
+            const msg = e instanceof Error ? e.message : "ATX 失敗";
+            set({ liveError: msg });
+            get().pushRpc({ dir: "note", method, body: msg });
           });
-        });
         return;
       }
+
+      if (mode === "live" && !live) {
+        set({
+          liveError: "尚未連上 JetKVM，這次用模擬器開機。連線後電源才會打到主機板。",
+        });
+      }
+
       const cur = duts[activeId];
       const next =
         action === "off" ? powerOff(cur) : action === "on" ? powerOn(cur) : powerCycle(cur);
@@ -344,50 +355,52 @@ export const useLab = create<LabState>()((set, get) => {
 
       const results: StepResult[] = [];
       let failed = false;
-      for (const step of playbook.steps) {
-        if (get().aborting) break;
-        set((s) => ({
-          currentStepId: step.id,
-          stepResults: s.stepResults.map((r) =>
-            r.id === step.id ? { ...r, status: "running" } : r,
-          ),
-        }));
-        const result = await runStep(step, host());
-        results.push(result);
-        if (result.status === "fail") failed = true;
-        set((s) => ({
-          stepResults: s.stepResults.map((r) => (r.id === step.id ? result : r)),
-        }));
-        if (failed && (step.tool === "wait" || step.tool === "assert")) break;
-      }
-
-      const aborted = get().aborting;
-      const status = aborted ? "abort" : failed ? "fail" : "pass";
-      const report: RunReport = {
-        id: `run-${startedAt}`,
-        playbookId: playbook.id,
-        playbookName: playbook.nameZh,
-        dutId,
-        dutName,
-        startedAt,
-        finishedAt: Date.now(),
-        status,
-        results,
-      };
-      set((s) => {
-        const reports = [report, ...s.reports].slice(0, 12);
-        try {
-          localStorage.setItem("relkvm-reports", JSON.stringify(reports));
-        } catch {
-          /* ignore */
+      try {
+        for (const step of playbook.steps) {
+          if (get().aborting) break;
+          set((s) => ({
+            currentStepId: step.id,
+            stepResults: s.stepResults.map((r) =>
+              r.id === step.id ? { ...r, status: "running" } : r,
+            ),
+          }));
+          const result = await runStep(step, host());
+          results.push(result);
+          if (result.status === "fail") failed = true;
+          set((s) => ({
+            stepResults: s.stepResults.map((r) => (r.id === step.id ? result : r)),
+          }));
+          if (failed && (step.tool === "wait" || step.tool === "assert")) break;
         }
-        return {
-          running: false,
-          aborting: false,
-          currentStepId: null,
-          reports,
+      } finally {
+        const aborted = get().aborting;
+        const status = aborted ? "abort" : failed ? "fail" : "pass";
+        const report: RunReport = {
+          id: `run-${startedAt}`,
+          playbookId: playbook.id,
+          playbookName: playbook.nameZh,
+          dutId,
+          dutName,
+          startedAt,
+          finishedAt: Date.now(),
+          status,
+          results,
         };
-      });
+        set((s) => {
+          const reports = [report, ...s.reports].slice(0, 12);
+          try {
+            localStorage.setItem("relkvm-reports", JSON.stringify(reports));
+          } catch {
+            /* ignore */
+          }
+          return {
+            running: false,
+            aborting: false,
+            currentStepId: null,
+            reports,
+          };
+        });
+      }
     },
   };
 });

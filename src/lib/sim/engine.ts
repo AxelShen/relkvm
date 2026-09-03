@@ -107,7 +107,7 @@ function finishOsBoot(state: DutState): DutState {
 }
 
 export function powerOn(state: DutState): DutState {
-  if (state.power !== "off") return state;
+  if (state.power !== "off") return powerCycle(state);
   return { ...state, power: "posting", postMs: 0, dialog: null, lastKey: null };
 }
 
