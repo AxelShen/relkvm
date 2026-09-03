@@ -205,7 +205,7 @@ export const useLab = create<LabState>()((set, get) => {
       set({ liveStatus: "idle", liveError: null, mode: "sim" });
     },
     tick: (dt) => {
-      if (get().mode === "live") return;
+      if (get().mode === "live" && getJetKvmSession().connected) return;
       const { activeId, duts, speed } = get();
       const next = tick(duts[activeId], dt * speed);
       if (next !== duts[activeId]) {
@@ -262,7 +262,7 @@ export const useLab = create<LabState>()((set, get) => {
       set({ duts: { ...duts, [activeId]: next } });
     },
     power: (action) => {
-      const { activeId, duts, mode } = get();
+      const { activeId, mode } = get();
       const live = host().live();
       const method = mode === "live" && live ? JETKVM_LIVE_RPC.power : JETKVM_RPC.power;
       get().pushRpc({
@@ -292,10 +292,12 @@ export const useLab = create<LabState>()((set, get) => {
         });
       }
 
-      const cur = duts[activeId];
-      const next =
-        action === "off" ? powerOff(cur) : action === "on" ? powerOn(cur) : powerCycle(cur);
-      set({ duts: { ...duts, [activeId]: next } });
+      set((s) => {
+        const cur = s.duts[s.activeId] ?? s.duts[activeId];
+        const next =
+          action === "off" ? powerOff(cur) : action === "on" ? powerOn(cur) : powerCycle(cur);
+        return { duts: { ...s.duts, [cur.profile.id]: next } };
+      });
     },
     mountIso: (on) => {
       const { activeId, duts, mode } = get();

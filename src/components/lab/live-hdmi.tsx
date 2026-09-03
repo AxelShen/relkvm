@@ -62,7 +62,7 @@ export function LiveHdmi() {
           )}
         </div>
       )}
-      <div className="kvm-scan pointer-events-none absolute inset-0" />
+      <div className="kvm-scan pointer-events-none absolute inset-0 z-0" />
     </div>
   );
 }

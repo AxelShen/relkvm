@@ -18,7 +18,7 @@ export function KvmScreen({ dut }: { dut: DutState }) {
       {dut.power === "shell" && <ShellScreen dut={dut} />}
       {dut.power === "booting" && <BootingScreen dut={dut} />}
       {dut.power === "os" && <OsScreen dut={dut} />}
-      <div className="kvm-scan absolute inset-0" />
+      {dut.power !== "off" && <div className="kvm-scan pointer-events-none absolute inset-0 z-0" />}
     </div>
   );
 }
@@ -27,17 +27,18 @@ function NoSignal() {
   const power = useLab((s) => s.power);
   const running = useLab((s) => s.running);
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 bg-surface text-signal">
+    <div className="relative z-10 flex h-full flex-col items-center justify-center gap-4 bg-surface text-signal">
       <div className="text-xl tracking-widest text-muted">NO SIGNAL</div>
       <p className="text-xs text-muted">HDMI 未鎖定 · DUT 關機</p>
       <button
         type="button"
         disabled={running}
         onClick={(e) => {
+          e.preventDefault();
           e.stopPropagation();
           power("on");
         }}
-        className="inline-flex h-12 min-w-40 items-center justify-center rounded-md bg-accent px-5 text-sm font-medium text-accent-fg disabled:opacity-40"
+        className="relative z-20 inline-flex h-12 min-w-40 items-center justify-center rounded-md bg-accent px-5 text-sm font-medium text-accent-fg disabled:opacity-40"
       >
         開啟電源
       </button>

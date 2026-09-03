@@ -18,7 +18,7 @@ export function AtxBar({ className }: { className?: string }) {
     <div className={cn("flex flex-wrap gap-2", className)}>
       <Button
         variant={off ? "primary" : "outline"}
-        disabled={running}
+        type="button"
         onClick={() => power(mode === "live" ? "on" : off ? "on" : "off")}
       >
         <Power className="size-4" />
